@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { store, Member, Plan, Membership, sendWhatsApp, WHATSAPP_NUMBER } from "@/lib/store";
+import { store, Member, Plan, Membership, renewalWaUrl, WHATSAPP_NUMBER } from "@/lib/store";
 
 export default function MembershipsPage() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -134,12 +134,14 @@ export default function MembershipsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => sendWhatsApp(member?.name ?? "", plan?.name ?? "", m.endDate)}
-                          className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition"
+                        <a
+                          href={renewalWaUrl(member?.name ?? "", plan?.name ?? "", m.endDate)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition inline-block"
                         >
                           WhatsApp
-                        </button>
+                        </a>
                       </td>
                     </tr>
                   );
