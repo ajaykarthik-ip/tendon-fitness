@@ -12,7 +12,9 @@ const SOURCE_COLORS: Record<string, string> = {
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
 
-  useEffect(() => { setLeads(store.getLeads()); }, []);
+  useEffect(() => {
+    store.getLeads().then(setLeads);
+  }, []);
 
   return (
     <div className="py-5">
@@ -20,6 +22,11 @@ export default function LeadsPage() {
       <p className="text-sm text-gray-400 mt-1 mb-6">{leads.length} new leads this week</p>
 
       <div className="flex flex-col gap-3">
+        {leads.length === 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">
+            No leads yet
+          </div>
+        )}
         {leads.map((lead) => (
           <div key={lead.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">

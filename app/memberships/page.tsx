@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { store, Member, Plan, Membership, renewalWaUrl, WHATSAPP_NUMBER } from "@/lib/store";
+import { store, Member, Plan, Membership, renewalWaUrl } from "@/lib/store";
 
 export default function MembershipsPage() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -9,24 +9,39 @@ export default function MembershipsPage() {
   const [form, setForm] = useState({ memberId: "", planId: "", startDate: "", endDate: "" });
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    setMemberships(store.getMemberships());
-    setMembers(store.getMembers());
-    setPlans(store.getPlans());
-  }, []);
+  async function load() {
+    const [ms, mem, pl] = await Promise.all([store.getMemberships(), store.getMembers(), store.getPlans()]);
+    setMemberships(ms);
+    setMembers(mem);
+    setPlans(pl);
+  }
+  useEffect(() => { load(); }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const onPlanOrStartChange = (next: { planId?: string; startDate?: string }) => {
+    const merged = { ...form, ...next };
+    const plan = plans.find((p) => p.id === merged.planId);
+    if (plan && merged.startDate) {
+      const end = new Date(merged.startDate);
+      end.setMonth(end.getMonth() + plan.durationMonths);
+      merged.endDate = end.toISOString().split("T")[0];
+    }
+    setForm(merged);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (new Date(form.endDate) <= new Date(form.startDate)) {
       setError("End date must be after start date.");
       return;
     }
-    const newM: Membership = { id: Date.now().toString(), ...form };
-    const updated = [newM, ...memberships];
-    store.saveMemberships(updated);
-    setMemberships(updated);
-    setForm({ memberId: "", planId: "", startDate: "", endDate: "" });
+    try {
+      await store.createMembership(form);
+      setForm({ memberId: "", planId: "", startDate: "", endDate: "" });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to assign membership");
+    }
   };
 
   const getMember = (id: string) => members.find((m) => m.id === id);
@@ -36,9 +51,7 @@ export default function MembershipsPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-800 mb-2">Memberships</h1>
-      <p className="text-sm text-gray-400 mb-6">
-        WhatsApp messages go to <span className="font-medium text-gray-600">+91 {WHATSAPP_NUMBER.slice(2)}</span>
-      </p>
+      <p className="text-sm text-gray-400 mb-6">Assign plans and notify members via WhatsApp</p>
 
       <div className="grid md:grid-cols-3 gap-6">
         <div>
@@ -59,12 +72,12 @@ export default function MembershipsPage() {
               <select
                 required
                 value={form.planId}
-                onChange={(e) => setForm({ ...form, planId: e.target.value })}
+                onChange={(e) => onPlanOrStartChange({ planId: e.target.value })}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
               >
                 <option value="">Select Plan</option>
                 {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} — ₹{p.price}</option>
+                  <option key={p.id} value={p.id}>{p.name} — {p.durationMonths}mo — ₹{p.price}</option>
                 ))}
               </select>
               <div>
@@ -73,7 +86,7 @@ export default function MembershipsPage() {
                   required
                   type="date"
                   value={form.startDate}
-                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                  onChange={(e) => onPlanOrStartChange({ startDate: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
                 />
               </div>
@@ -135,7 +148,7 @@ export default function MembershipsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <a
-                          href={renewalWaUrl(member?.name ?? "", plan?.name ?? "", m.endDate)}
+                          href={renewalWaUrl(member?.phone ?? "", member?.name ?? "", plan?.name ?? "", m.endDate)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition inline-block"

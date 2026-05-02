@@ -26,16 +26,6 @@ function MembersIcon({ active }: { active: boolean }) {
   );
 }
 
-function InsightsIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10" strokeWidth={active ? 3 : 2} />
-      <line x1="12" y1="20" x2="12" y2="4" strokeWidth={active ? 3 : 2} />
-      <line x1="6" y1="20" x2="6" y2="14" strokeWidth={active ? 3 : 2} />
-    </svg>
-  );
-}
-
 function PlansIcon({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -59,7 +49,6 @@ function BellIcon({ active }: { active: boolean }) {
 const tabs = [
   { href: "/", label: "Home", Icon: HomeIcon },
   { href: "/users", label: "Members", Icon: MembersIcon },
-  { href: "/insights", label: "Insights", Icon: InsightsIcon },
   { href: "/plans", label: "Plans", Icon: PlansIcon },
   { href: "/alerts", label: "Alerts", Icon: BellIcon },
 ];
@@ -69,8 +58,9 @@ export default function BottomNav() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    const alerts = store.getAlerts();
-    setUnreadCount(alerts.filter((a) => !a.read).length);
+    store.getAlerts()
+      .then((alerts) => setUnreadCount(alerts.filter((a) => !a.read).length))
+      .catch(() => setUnreadCount(0));
   }, [pathname]);
 
   return (

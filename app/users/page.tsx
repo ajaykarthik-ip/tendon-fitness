@@ -2,12 +2,13 @@
 import { useEffect, useState } from "react";
 import {
   store, Member, Membership, Plan,
-  DEFAULT_MEMBERS, DEFAULT_MEMBERSHIPS, DEFAULT_PLANS,
   renewalWaUrl, reactivationWaUrl, inviteWaUrl,
   formatLastVisit, getMemberStatus, getDaysLeft, getMemberTier,
-  generateMembershipId, getRandomPhoto,
+  generateMembershipId,
 } from "@/lib/store";
-import Link from "next/link";
+import Avatar from "@/components/Avatar";
+import { compressImage } from "@/lib/image";
+import { useRef } from "react";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -63,7 +64,6 @@ function WaButton({ href, label, variant }: { href: string; label: string; varia
       rel="noopener noreferrer"
       className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition ${colors[variant]}`}
     >
-      {/* WhatsApp icon */}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
       </svg>
@@ -72,19 +72,22 @@ function WaButton({ href, label, variant }: { href: string; label: string; varia
   );
 }
 
-const initial = buildEnriched(DEFAULT_MEMBERS, DEFAULT_MEMBERSHIPS, DEFAULT_PLANS);
-
 export default function UsersPage() {
-  const [data, setData] = useState<MemberWithData[]>(initial);
+  const [data, setData] = useState<MemberWithData[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", photo: "" });
   const [error, setError] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
-  function load() {
-    const members = store.getMembers();
-    const memberships = store.getMemberships();
-    const plans = store.getPlans();
+  async function load() {
+    const [members, memberships, plans] = await Promise.all([
+      store.getMembers(),
+      store.getMemberships(),
+      store.getPlans(),
+    ]);
     setData(buildEnriched(members, memberships, plans));
   }
 
@@ -101,27 +104,45 @@ export default function UsersPage() {
 
   const activeCount = data.filter((d) => d.status === "active" || d.status === "expiring").length;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhotoBusy(true);
+    setError("");
+    try {
+      const compressed = await compressImage(file, { maxSize: 400, quality: 0.7 });
+      setForm((f) => ({ ...f, photo: compressed }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process image");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const members = store.getMembers();
+    const members = await store.getMembers();
     if (members.find((m) => m.email === form.email)) { setError("Email already exists."); return; }
-    const newMember: Member = {
-      id: Date.now().toString(),
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
-      createdAt: new Date().toISOString().split("T")[0],
-      photo: getRandomPhoto(Math.random() > 0.5 ? "men" : "women"),
-      membershipId: generateMembershipId(),
-      lastVisit: new Date().toISOString(),
-      attendance: 0,
-      streak: 0,
-    };
-    store.saveMembers([newMember, ...members]);
-    setForm({ name: "", email: "", phone: "" });
-    setShowForm(false);
-    load();
+    try {
+      await store.createMember({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        photo: form.photo,
+        createdAt: new Date().toISOString().split("T")[0],
+        membershipId: generateMembershipId(),
+        lastVisit: new Date().toISOString(),
+        attendance: 0,
+        streak: 0,
+      });
+      setForm({ name: "", email: "", phone: "", photo: "" });
+      setShowForm(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create member");
+    }
   };
 
   return (
@@ -131,8 +152,7 @@ export default function UsersPage() {
         <span className="text-sm text-gray-400">{data.length} total</span>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-4">
+      <div className="relative mb-3">
         <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -145,8 +165,112 @@ export default function UsersPage() {
         />
       </div>
 
-      {/* Member cards */}
+      {!showForm && (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full mb-4 bg-gray-900 hover:bg-gray-800 text-white rounded-2xl px-4 py-3.5 font-semibold text-sm flex items-center justify-center gap-2 transition"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add New Member
+        </button>
+      )}
+
+      {showForm && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-lg text-gray-900">New Member</h2>
+            <button onClick={() => { setShowForm(false); setError(""); }} className="text-gray-400 hover:text-gray-700 p-1">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col items-center gap-3 pb-2">
+              <div className="relative">
+                {form.photo ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={form.photo} alt="preview" className="w-24 h-24 rounded-full object-cover border-2 border-gray-200" />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                  </div>
+                )}
+                {form.photo && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, photo: "" }))}
+                    className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow"
+                    aria-label="Remove photo"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraRef.current?.click()}
+                  disabled={photoBusy}
+                  className="text-xs font-semibold bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-xl flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  {photoBusy ? "Processing…" : "Take Photo"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryRef.current?.click()}
+                  disabled={photoBusy}
+                  className="text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-xl flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  Gallery
+                </button>
+              </div>
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoFile} className="hidden" />
+              <input ref={galleryRef} type="file" accept="image/*" onChange={handlePhotoFile} className="hidden" />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Full Name</label>
+              <input required placeholder="e.g. Priya Kumar" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Email</label>
+              <input required type="email" placeholder="priya@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Phone</label>
+              <input required type="tel" placeholder="9876543210" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
+            </div>
+            {error && <p className="text-red-500 text-xs">{error}</p>}
+            <button type="submit" className="bg-gray-900 text-white rounded-xl py-3 font-semibold text-sm hover:bg-gray-800 mt-1">
+              Add Member
+            </button>
+          </form>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4">
+        {filtered.length === 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">
+            No members yet. Tap &quot;Add New Member&quot; above.
+          </div>
+        )}
         {filtered.map(({ member, status, latestMembership, plan, daysLeft, progressPct }) => {
           const tier = getMemberTier(member);
 
@@ -154,11 +278,10 @@ export default function UsersPage() {
             <div key={member.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <div className="p-4">
 
-                {/* Header row */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <img src={member.photo} alt={member.name} className="w-14 h-14 rounded-2xl object-cover" />
+                      <Avatar name={member.name} src={member.photo} className="w-14 h-14 rounded-2xl" textClassName="text-base" />
                       {tier === "platinum" && (
                         <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center text-white text-[10px]">★</span>
                       )}
@@ -171,7 +294,6 @@ export default function UsersPage() {
                   <StatusBadge status={status} />
                 </div>
 
-                {/* Tier badge */}
                 {tier !== "standard" && (
                   <div className="mb-3">
                     <TierBadge tier={tier} />
@@ -183,7 +305,6 @@ export default function UsersPage() {
                   </div>
                 )}
 
-                {/* Elite/Platinum stats */}
                 {tier !== "standard" && (
                   <div className="flex gap-6 mb-3">
                     <div>
@@ -197,7 +318,6 @@ export default function UsersPage() {
                   </div>
                 )}
 
-                {/* Expiring progress bar */}
                 {status === "expiring" && latestMembership && (
                   <div className="mb-3">
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -210,7 +330,6 @@ export default function UsersPage() {
                   </div>
                 )}
 
-                {/* Last visit (active only) */}
                 {status === "active" && (
                   <div className="flex items-center gap-2 mb-3">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
@@ -222,18 +341,14 @@ export default function UsersPage() {
                   </div>
                 )}
 
-                {/* ── ACTION BUTTONS ── */}
-
-                {/* EXPIRING → send renewal reminder on WhatsApp */}
                 {status === "expiring" && latestMembership && plan && (
                   <WaButton
-                    href={renewalWaUrl(member.name, plan.name, latestMembership.endDate)}
+                    href={renewalWaUrl(member.phone, member.name, plan.name, latestMembership.endDate)}
                     label="Send Renewal Reminder"
                     variant="blue"
                   />
                 )}
 
-                {/* EXPIRED → send reactivation on WhatsApp + Call */}
                 {status === "expired" && plan && (
                   <div className="flex gap-2">
                     <a
@@ -246,76 +361,46 @@ export default function UsersPage() {
                       Call
                     </a>
                     <WaButton
-                      href={reactivationWaUrl(member.name, plan.name)}
+                      href={reactivationWaUrl(member.phone, member.name, plan.name)}
                       label="Send Reactivation"
                       variant="red"
                     />
                   </div>
                 )}
 
-                {/* NO PLAN → invite to join */}
                 {status === "none" && (
                   <WaButton
-                    href={inviteWaUrl(member.name)}
+                    href={inviteWaUrl(member.phone, member.name)}
                     label="Send Invite to Join"
                     variant="green"
                   />
                 )}
-
-                {/* ACTIVE → no WhatsApp button, they're good */}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Total active banner */}
-      <div className="mt-6 bg-gray-900 rounded-2xl p-4 flex items-center justify-between">
-        <div>
-          <div className="text-gray-400 text-xs font-medium">Total Active Members</div>
-          <div className="text-white text-3xl font-black">{activeCount}</div>
-          <div className="text-gray-500 text-xs mt-0.5">+12% this month</div>
-        </div>
-        <div className="flex -space-x-2">
-          {data.filter((d) => d.status === "active" || d.status === "expiring").slice(0, 4).map(({ member }) => (
-            <img key={member.id} src={member.photo} alt={member.name} className="w-8 h-8 rounded-full border-2 border-gray-900 object-cover" />
-          ))}
-          {activeCount > 4 && (
-            <div className="w-8 h-8 rounded-full border-2 border-gray-900 bg-gray-700 flex items-center justify-center text-white text-[10px] font-bold">
-              +{activeCount - 4}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Add member slide-up form */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={() => setShowForm(false)}>
-          <div className="bg-white w-full rounded-t-3xl p-6 max-w-lg mx-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
-            <h2 className="font-bold text-xl text-gray-900 mb-4">Add New Member</h2>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              <input required placeholder="Full Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-              <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-              <input required placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-              {error && <p className="text-red-500 text-xs">{error}</p>}
-              <button type="submit" className="bg-gray-900 text-white rounded-xl py-3 font-semibold text-sm hover:bg-gray-800 mt-1">
-                Add Member
-              </button>
-            </form>
+      {data.length > 0 && (
+        <div className="mt-6 bg-gray-900 rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <div className="text-gray-400 text-xs font-medium">Total Active Members</div>
+            <div className="text-white text-3xl font-black">{activeCount}</div>
+            <div className="text-gray-500 text-xs mt-0.5">+12% this month</div>
+          </div>
+          <div className="flex -space-x-2">
+            {data.filter((d) => d.status === "active" || d.status === "expiring").slice(0, 4).map(({ member }) => (
+              <Avatar key={member.id} name={member.name} src={member.photo} className="w-8 h-8 rounded-full border-2 border-gray-900" textClassName="text-[10px]" />
+            ))}
+            {activeCount > 4 && (
+              <div className="w-8 h-8 rounded-full border-2 border-gray-900 bg-gray-700 flex items-center justify-center text-white text-[10px] font-bold">
+                +{activeCount - 4}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* FAB */}
-      <button
-        onClick={() => setShowForm(true)}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition z-40"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
     </div>
   );
 }

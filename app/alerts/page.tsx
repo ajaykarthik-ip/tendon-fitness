@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { store, Alert, Member } from "@/lib/store";
+import Avatar from "@/components/Avatar";
 
 const TYPE_CONFIG = {
   expiring: { label: "Expiring", color: "bg-amber-100 text-amber-700", icon: "🕐" },
@@ -12,21 +13,23 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
 
-  useEffect(() => {
-    setAlerts(store.getAlerts());
-    setMembers(store.getMembers());
-  }, []);
+  async function load() {
+    const [a, m] = await Promise.all([store.getAlerts(), store.getMembers()]);
+    setAlerts(a);
+    setMembers(m);
+  }
 
-  const markRead = (id: string) => {
-    const updated = alerts.map((a) => a.id === id ? { ...a, read: true } : a);
-    store.saveAlerts(updated);
-    setAlerts(updated);
+  useEffect(() => { load(); }, []);
+
+  const markRead = async (id: string) => {
+    await store.updateAlert(id, { read: true });
+    setAlerts((prev) => prev.map((a) => a.id === id ? { ...a, read: true } : a));
   };
 
-  const markAllRead = () => {
-    const updated = alerts.map((a) => ({ ...a, read: true }));
-    store.saveAlerts(updated);
-    setAlerts(updated);
+  const markAllRead = async () => {
+    const unread = alerts.filter((a) => !a.read);
+    await Promise.all(unread.map((a) => store.updateAlert(a.id, { read: true })));
+    setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
   };
 
   const getMember = (id: string) => members.find((m) => m.id === id);
@@ -61,7 +64,7 @@ export default function AlertsPage() {
               >
                 <div className="flex items-start gap-3">
                   {member && (
-                    <img src={member.photo} alt={member.name} className="w-11 h-11 rounded-xl object-cover flex-shrink-0" />
+                    <Avatar name={member.name} src={member.photo} className="w-11 h-11 rounded-xl flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

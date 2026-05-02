@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { store, Membership, Member, Plan, renewalWaUrl, DEFAULT_MEMBERS, DEFAULT_MEMBERSHIPS, DEFAULT_PLANS } from "@/lib/store";
+import { store, Membership, Member, Plan, renewalWaUrl } from "@/lib/store";
+import Avatar from "@/components/Avatar";
 
 interface ExpiringItem {
   member: Member;
@@ -50,52 +51,47 @@ function computeStats(members: Member[], plans: Plan[], memberships: Membership[
   };
 }
 
-const initial = computeStats(DEFAULT_MEMBERS, DEFAULT_PLANS, DEFAULT_MEMBERSHIPS);
+const EMPTY_STATS: Stats = { members: 0, plans: 0, active: 0, expiring: 0, expired: 0 };
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<Stats>(initial.stats);
-  const [expiringSoon, setExpiringSoon] = useState<ExpiringItem[]>(initial.expiringSoon);
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
+  const [expiringSoon, setExpiringSoon] = useState<ExpiringItem[]>([]);
 
   useEffect(() => {
-    const members = store.getMembers();
-    const plans = store.getPlans();
-    const memberships = store.getMemberships();
-    const { stats: s, expiringSoon: e } = computeStats(members, plans, memberships);
-    setStats(s);
-    setExpiringSoon(e);
+    Promise.all([store.getMembers(), store.getPlans(), store.getMemberships()])
+      .then(([members, plans, memberships]) => {
+        const { stats: s, expiringSoon: e } = computeStats(members, plans, memberships);
+        setStats(s);
+        setExpiringSoon(e);
+      });
   }, []);
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" });
-
-  const statCards = [
-    { label: "TOTAL", value: stats.members, sub: "Growth +12%", icon: "👥", dark: false, red: false },
-    { label: "ACTIVE", value: stats.active, sub: "Attendance High", icon: "⚡", dark: false, red: false },
-    { label: "EXPIRING", value: stats.expiring, sub: "Needs Attention", icon: "🕐", dark: true, red: false },
-    { label: "EXPIRED", value: stats.expired, sub: "Retention Alert", icon: "💔", dark: false, red: true },
-  ];
 
   return (
     <div className="py-5">
       <h1 className="text-4xl font-black text-gray-900 leading-tight">Overview</h1>
       <p className="text-sm text-gray-400 mt-1 mb-6">{dateStr} — Performance Dashboard</p>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        {statCards.map((c) => (
-          <div
-            key={c.label}
-            className={`rounded-2xl p-4 ${c.dark ? "bg-gray-900 text-white" : "bg-white border border-gray-100"}`}
-          >
-            <span className="text-xl">{c.icon}</span>
-            <div className={`text-xs font-semibold tracking-widest mt-2 ${c.dark ? "text-gray-400" : "text-gray-400"}`}>{c.label}</div>
-            <div className={`text-4xl font-black mt-0.5 ${c.red ? "text-red-500" : c.dark ? "text-white" : "text-gray-900"}`}>{c.value}</div>
-            <div className={`text-xs mt-1 ${c.dark ? "text-gray-500" : c.red ? "text-red-400" : "text-gray-400"}`}>{c.sub}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-3 gap-2 mb-8">
+        <div className="rounded-2xl p-3 bg-blue-50 border border-blue-100">
+          <span className="text-lg">👥</span>
+          <div className="text-[10px] font-semibold tracking-widest mt-1.5 text-blue-700/70">TOTAL</div>
+          <div className="text-3xl font-black mt-0.5 text-blue-700 leading-none">{stats.members}</div>
+        </div>
+        <div className="rounded-2xl p-3 bg-amber-50 border border-amber-100">
+          <span className="text-lg">🕐</span>
+          <div className="text-[10px] font-semibold tracking-widest mt-1.5 text-amber-700/70">EXPIRING</div>
+          <div className="text-3xl font-black mt-0.5 text-amber-600 leading-none">{stats.expiring}</div>
+        </div>
+        <div className="rounded-2xl p-3 bg-red-50 border border-red-100">
+          <span className="text-lg">💔</span>
+          <div className="text-[10px] font-semibold tracking-widest mt-1.5 text-red-700/70">EXPIRED</div>
+          <div className="text-3xl font-black mt-0.5 text-red-600 leading-none">{stats.expired}</div>
+        </div>
       </div>
 
-      {/* Expiring Soon */}
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-bold text-gray-900">Expiring Soon</h2>
         <Link href="/users" className="text-sm text-gray-400 hover:text-gray-700">View All</Link>
@@ -110,7 +106,7 @@ export default function Dashboard() {
           {expiringSoon.map(({ member, plan, membership, daysLeft: d }) => (
             <div key={membership.id} className="bg-white rounded-2xl border border-dashed border-gray-200 p-4">
               <div className="flex items-center gap-3">
-                <img src={member.photo} alt={member.name} className="w-12 h-12 rounded-full object-cover" />
+                <Avatar name={member.name} src={member.photo} className="w-12 h-12 rounded-full" />
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-gray-900 text-base">{member.name}</div>
                   <div className="text-xs text-gray-400">{plan.name} Membership</div>
@@ -120,7 +116,7 @@ export default function Dashboard() {
                     {d === 0 ? "TODAY" : `${d} DAY${d > 1 ? "S" : ""} LEFT`}
                   </span>
                   <a
-                    href={renewalWaUrl(member.name, plan.name, membership.endDate)}
+                    href={renewalWaUrl(member.phone, member.name, plan.name, membership.endDate)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-8 h-8 rounded-full bg-green-100 hover:bg-green-200 flex items-center justify-center transition"
@@ -141,7 +137,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick actions */}
       <div className="mt-8 flex flex-col gap-2">
         <h2 className="text-lg font-bold text-gray-900 mb-1">Quick Actions</h2>
         <Link href="/users" className="bg-white border border-gray-100 rounded-xl px-4 py-3 text-sm font-medium hover:bg-gray-50 flex items-center justify-between">

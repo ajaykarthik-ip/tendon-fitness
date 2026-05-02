@@ -29,14 +29,14 @@ export default function AutomationPage() {
   const [whatsappOn, setWhatsappOn] = useState(true);
   const [emailOn, setEmailOn] = useState(true);
 
-  useEffect(() => {
-    setLogs(store.getAutomationLogs());
-  }, []);
+  async function load() {
+    setLogs(await store.getAutomationLogs());
+  }
+  useEffect(() => { load(); }, []);
 
-  const addLog = (log: AutomationLog) => {
-    const updated = [log, ...logs];
-    store.saveAutomationLogs(updated);
-    setLogs(updated);
+  const addLog = async (log: Omit<AutomationLog, "id">) => {
+    await store.createAutomationLog(log);
+    await load();
   };
 
   const downloadCSV = () => {
@@ -51,11 +51,10 @@ export default function AutomationPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleWhatsappToggle = () => {
+  const handleWhatsappToggle = async () => {
     const next = !whatsappOn;
     setWhatsappOn(next);
-    addLog({
-      id: Date.now().toString(),
+    await addLog({
       type: "system",
       title: `WhatsApp Notifications ${next ? "enabled" : "disabled"}`,
       subtitle: "Channel status updated by admin",
@@ -63,11 +62,10 @@ export default function AutomationPage() {
     });
   };
 
-  const handleEmailToggle = () => {
+  const handleEmailToggle = async () => {
     const next = !emailOn;
     setEmailOn(next);
-    addLog({
-      id: Date.now().toString(),
+    await addLog({
       type: "system",
       title: `Email Notifications ${next ? "enabled" : "disabled"}`,
       subtitle: "Channel status updated by admin",
@@ -75,9 +73,8 @@ export default function AutomationPage() {
     });
   };
 
-  const sendBatch = () => {
-    addLog({
-      id: Date.now().toString(),
+  const sendBatch = async () => {
+    await addLog({
       type: "batch",
       title: "Batch Process: reminders sent",
       subtitle: "Manual morning motivation broadcast triggered",
@@ -94,7 +91,6 @@ export default function AutomationPage() {
         Our intelligent curator manages your member engagement cycle — renewals, attendance nudges, and outreach with zero manual intervention.
       </p>
 
-      {/* Today's volume */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
         <div className="text-xs text-gray-400 font-semibold tracking-wide mb-1">TODAY&apos;S VOLUME</div>
         <div className="flex items-baseline gap-2">
@@ -108,11 +104,9 @@ export default function AutomationPage() {
         </div>
       </div>
 
-      {/* Active channels */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
         <div className="text-xs text-gray-400 font-semibold tracking-wide mb-4">ACTIVE CHANNELS</div>
         <div className="flex flex-col gap-4">
-          {/* WhatsApp toggle */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-lg">💬</div>
@@ -129,7 +123,6 @@ export default function AutomationPage() {
             </button>
           </div>
 
-          {/* Email toggle */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-lg">📧</div>
@@ -152,7 +145,6 @@ export default function AutomationPage() {
         </p>
       </div>
 
-      {/* Configure + batch */}
       <div className="flex gap-3 mb-4">
         <button
           onClick={sendBatch}
@@ -167,7 +159,6 @@ export default function AutomationPage() {
         </button>
       </div>
 
-      {/* Live execution logs */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
         <div className="flex items-center justify-between mb-4">
           <div className="text-xs text-gray-400 font-semibold tracking-wide">LIVE EXECUTION LOGS</div>
@@ -175,6 +166,9 @@ export default function AutomationPage() {
         </div>
 
         <div className="flex flex-col gap-3">
+          {logs.length === 0 && (
+            <div className="text-sm text-gray-400 text-center py-4">No activity yet</div>
+          )}
           {logs.map((log) => (
             <div key={log.id} className={`rounded-xl border p-3 ${LOG_COLORS[log.type]}`}>
               <div className="flex items-start gap-2">
@@ -193,7 +187,6 @@ export default function AutomationPage() {
         </div>
       </div>
 
-      {/* System health */}
       <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 bg-green-500 rounded-full" />
@@ -202,7 +195,6 @@ export default function AutomationPage() {
         <span className="text-xs text-gray-400">All nodes &lt;50ms</span>
       </div>
 
-      {/* Download CSV */}
       <button
         onClick={downloadCSV}
         className="w-full border border-gray-200 text-gray-600 text-sm font-semibold py-3 rounded-xl hover:bg-gray-50 transition flex items-center justify-center gap-2"
