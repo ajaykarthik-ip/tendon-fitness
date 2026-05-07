@@ -22,4 +22,8 @@ const MemberSchema = new Schema(
   { toJSON: { transform }, toObject: { transform } }
 );
 
+MemberSchema.index({ createdAt: -1 });
+MemberSchema.index({ name: 1 });
+MemberSchema.index({ phone: 1 });
+
 export const Member = models.Member || model("Member", MemberSchema);

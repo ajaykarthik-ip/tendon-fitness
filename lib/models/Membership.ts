@@ -19,4 +19,8 @@ const MembershipSchema = new Schema(
   { timestamps: true, toJSON: { transform }, toObject: { transform } }
 );
 
+MembershipSchema.index({ memberId: 1, endDate: -1 });
+MembershipSchema.index({ endDate: -1 });
+MembershipSchema.index({ planId: 1 });
+
 export const Membership = models.Membership || model("Membership", MembershipSchema);

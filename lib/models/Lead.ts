@@ -17,4 +17,6 @@ const LeadSchema = new Schema(
   { toJSON: { transform }, toObject: { transform } }
 );
 
+LeadSchema.index({ createdAt: -1 });
+
 export const Lead = models.Lead || model("Lead", LeadSchema);

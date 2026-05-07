@@ -81,6 +81,8 @@ export const store = {
   getMemberships: () => api<Membership[]>("/api/memberships"),
   createMembership: (data: Omit<Membership, "id">) =>
     api<Membership>("/api/memberships", { method: "POST", body: JSON.stringify(data) }),
+  updateMembership: (id: string, data: Partial<Membership>) =>
+    api<Membership>(`/api/memberships/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteMembership: (id: string) => api(`/api/memberships/${id}`, { method: "DELETE" }),
 
   getAlerts: () => api<Alert[]>("/api/alerts"),
@@ -106,7 +108,7 @@ function waUrl(phone: string, msg: string) {
 }
 
 export function renewalWaUrl(phone: string, memberName: string, planName: string, endDate: string) {
-  return waUrl(phone, `Hi ${memberName}! 👋 Just a friendly reminder — your *${planName}* membership at Tendon Fitness expires on *${new Date(endDate).toLocaleDateString("en-IN")}*. Renew today to keep your streak going! 💪`);
+  return waUrl(phone, `Hi ${memberName}! 👋 Your *${planName}* membership at Tendon Fitness expires on *${new Date(endDate).toLocaleDateString("en-IN")}*. Are you interested in renewing? Reply YES and we'll get it sorted for you. 💪`);
 }
 
 export function reactivationWaUrl(phone: string, memberName: string, planName: string) {

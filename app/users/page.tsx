@@ -1,16 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   store, Member, Membership, Plan,
   renewalWaUrl, reactivationWaUrl, inviteWaUrl,
-  formatLastVisit, getMemberStatus, getDaysLeft, getMemberTier,
+  getMemberStatus, getDaysLeft,
   generateMembershipId,
 } from "@/lib/store";
 import Avatar from "@/components/Avatar";
+import Link from "next/link";
 import { compressImage } from "@/lib/image";
-import { useRef } from "react";
-
-const DAY_MS = 1000 * 60 * 60 * 24;
 
 interface MemberWithData {
   member: Member;
@@ -18,7 +16,6 @@ interface MemberWithData {
   latestMembership: Membership | null;
   plan: Plan | null;
   daysLeft: number;
-  progressPct: number;
 }
 
 function buildEnriched(members: Member[], memberships: Membership[], plans: Plan[]): MemberWithData[] {
@@ -28,53 +25,36 @@ function buildEnriched(members: Member[], memberships: Membership[], plans: Plan
     const plan = latest ? plans.find((p) => p.id === latest.planId) ?? null : null;
     const status = getMemberStatus(memberships, member.id);
     const dl = latest ? getDaysLeft(latest.endDate) : 0;
-    let progressPct = 0;
-    if (latest) {
-      const totalDays = Math.ceil((new Date(latest.endDate).getTime() - new Date(latest.startDate).getTime()) / DAY_MS);
-      const elapsed = totalDays - Math.max(0, dl);
-      progressPct = Math.min(100, Math.round((elapsed / totalDays) * 100));
-    }
-    return { member, status, latestMembership: latest, plan, daysLeft: dl, progressPct };
+    return { member, status, latestMembership: latest, plan, daysLeft: dl };
   });
 }
 
 function StatusBadge({ status }: { status: "active" | "expiring" | "expired" | "none" }) {
-  if (status === "active")   return <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-green-100 text-green-700">ACTIVE</span>;
-  if (status === "expiring") return <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700">EXPIRING</span>;
-  if (status === "expired")  return <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-100 text-red-600">EXPIRED</span>;
-  return <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500">NO PLAN</span>;
+  if (status === "active")   return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">ACTIVE</span>;
+  if (status === "expiring") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">EXPIRING</span>;
+  if (status === "expired")  return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">EXPIRED</span>;
+  return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">NO PLAN</span>;
 }
 
-function TierBadge({ tier }: { tier: "platinum" | "elite" | "standard" }) {
-  if (tier === "platinum") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 uppercase tracking-wide">Platinum Tier</span>;
-  if (tier === "elite")    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide">Elite Tier</span>;
-  return null;
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function WaButton({ href, label, variant }: { href: string; label: string; variant: "green" | "blue" | "red" }) {
-  const colors = {
-    green: "bg-green-500 hover:bg-green-600 text-white",
-    blue:  "bg-blue-50 hover:bg-blue-100 text-blue-700",
-    red:   "bg-red-700 hover:bg-red-800 text-white",
-  };
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition ${colors[variant]}`}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-      </svg>
-      {label}
-    </a>
-  );
-}
+type SortKey = "expired" | "expiring" | "name-asc" | "name-desc";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "expiring", label: "Expiring soon" },
+  { value: "expired", label: "Expired" },
+  { value: "name-asc", label: "Name A → Z" },
+  { value: "name-desc", label: "Name Z → A" },
+];
 
 export default function UsersPage() {
   const [data, setData] = useState<MemberWithData[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("expiring");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "", photo: "" });
   const [error, setError] = useState("");
@@ -82,27 +62,66 @@ export default function UsersPage() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  async function load() {
-    const [members, memberships, plans] = await Promise.all([
-      store.getMembers(),
-      store.getMemberships(),
-      store.getPlans(),
-    ]);
-    setData(buildEnriched(members, memberships, plans));
-  }
+  // assign-plan inline form per-member
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assignForm, setAssignForm] = useState({ planId: "", startDate: new Date().toISOString().split("T")[0] });
+  const [assignError, setAssignError] = useState("");
 
+  async function load() {
+    try {
+      const [members, memberships, allPlans] = await Promise.all([
+        store.getMembers(),
+        store.getMemberships(),
+        store.getPlans(),
+      ]);
+      setData(buildEnriched(members, memberships, allPlans));
+      setPlans(allPlans);
+    } finally {
+      setLoading(false);
+    }
+  }
   useEffect(() => { load(); }, []);
 
-  const filtered = data.filter((d) => {
-    const q = search.toLowerCase();
-    return (
-      d.member.name.toLowerCase().includes(q) ||
-      d.member.membershipId.toLowerCase().includes(q) ||
-      d.member.phone.includes(q)
-    );
-  });
-
-  const activeCount = data.filter((d) => d.status === "active" || d.status === "expiring").length;
+  const filtered = data
+    .filter((d) => {
+      const q = search.toLowerCase();
+      return (
+        d.member.name.toLowerCase().includes(q) ||
+        d.member.membershipId.toLowerCase().includes(q) ||
+        d.member.phone.includes(q)
+      );
+    })
+    .sort((a, b) => {
+      switch (sort) {
+        case "name-asc":
+          return a.member.name.localeCompare(b.member.name);
+        case "name-desc":
+          return b.member.name.localeCompare(a.member.name);
+        case "expired": {
+          // Most-recently-expired first; non-expired (or no plan) sink to the bottom
+          const aExp = a.status === "expired";
+          const bExp = b.status === "expired";
+          if (aExp && bExp) return b.daysLeft - a.daysLeft; // -1 before -30
+          if (aExp) return -1;
+          if (bExp) return 1;
+          return a.member.name.localeCompare(b.member.name);
+        }
+        case "expiring":
+        default: {
+          // Expiring (0–7d) first, then sorted by daysLeft ascending; everyone else by daysLeft.
+          // Members with no plan go last.
+          if (!a.latestMembership && !b.latestMembership) {
+            return a.member.name.localeCompare(b.member.name);
+          }
+          if (!a.latestMembership) return 1;
+          if (!b.latestMembership) return -1;
+          const aSoon = a.status === "expiring";
+          const bSoon = b.status === "expiring";
+          if (aSoon !== bSoon) return aSoon ? -1 : 1;
+          return a.daysLeft - b.daysLeft;
+        }
+      }
+    });
 
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -145,37 +164,91 @@ export default function UsersPage() {
     }
   };
 
+  const startAssign = (memberId: string) => {
+    setAssigningId(memberId);
+    setAssignForm({ planId: "", startDate: new Date().toISOString().split("T")[0] });
+    setAssignError("");
+  };
+
+  const cancelAssign = () => {
+    setAssigningId(null);
+    setAssignError("");
+  };
+
+  const submitAssign = async (e: React.FormEvent, memberId: string) => {
+    e.preventDefault();
+    setAssignError("");
+    const plan = plans.find((p) => p.id === assignForm.planId);
+    if (!plan) { setAssignError("Pick a plan"); return; }
+    if (!assignForm.startDate) { setAssignError("Pick a start date"); return; }
+    const end = new Date(assignForm.startDate);
+    end.setMonth(end.getMonth() + plan.durationMonths);
+    try {
+      await store.createMembership({
+        memberId,
+        planId: plan.id,
+        startDate: assignForm.startDate,
+        endDate: end.toISOString().split("T")[0],
+      });
+      setAssigningId(null);
+      await load();
+    } catch (err) {
+      setAssignError(err instanceof Error ? err.message : "Failed to assign plan");
+    }
+  };
+
   return (
     <div className="py-5">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-3xl font-black text-gray-900">Members</h1>
-        <span className="text-sm text-gray-400">{data.length} total</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{loading ? "Loading…" : `${data.length} total`}</span>
+          {!showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              aria-label="Add new member"
+              className="w-9 h-9 rounded-full bg-gray-900 hover:bg-gray-800 text-white flex items-center justify-center transition tap"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="relative mb-3">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          type="text"
-          placeholder="Search by name or membership ID..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-        />
-      </div>
-
-      {!showForm && (
-        <button
-          onClick={() => setShowForm(true)}
-          className="w-full mb-4 bg-gray-900 hover:bg-gray-800 text-white rounded-2xl px-4 py-3.5 font-semibold text-sm flex items-center justify-center gap-2 transition"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          Add New Member
-        </button>
-      )}
+          <input
+            type="text"
+            placeholder="Search by name, phone, or ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+          />
+        </div>
+        <div className="relative shrink-0">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="10" y1="18" x2="14" y2="18" />
+          </svg>
+          <select
+            aria-label="Sort members"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="appearance-none bg-white border border-gray-200 rounded-xl pl-8 pr-7 py-2.5 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300 cursor-pointer"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <svg className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </div>
 
       {showForm && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-5">
@@ -206,7 +279,6 @@ export default function UsersPage() {
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, photo: "" }))}
                     className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow"
-                    aria-label="Remove photo"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -215,29 +287,10 @@ export default function UsersPage() {
                 )}
               </div>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => cameraRef.current?.click()}
-                  disabled={photoBusy}
-                  className="text-xs font-semibold bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
+                <button type="button" onClick={() => cameraRef.current?.click()} disabled={photoBusy} className="text-xs font-semibold bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-xl disabled:opacity-50">
                   {photoBusy ? "Processing…" : "Take Photo"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => galleryRef.current?.click()}
-                  disabled={photoBusy}
-                  className="text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
+                <button type="button" onClick={() => galleryRef.current?.click()} disabled={photoBusy} className="text-xs font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 px-3 py-2 rounded-xl disabled:opacity-50">
                   Gallery
                 </button>
               </div>
@@ -265,142 +318,140 @@ export default function UsersPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4">
-        {filtered.length === 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">
-            No members yet. Tap &quot;Add New Member&quot; above.
-          </div>
-        )}
-        {filtered.map(({ member, status, latestMembership, plan, daysLeft, progressPct }) => {
-          const tier = getMemberTier(member);
-
-          return (
-            <div key={member.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="p-4">
-
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Avatar name={member.name} src={member.photo} className="w-14 h-14 rounded-2xl" textClassName="text-base" />
-                      {tier === "platinum" && (
-                        <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center text-white text-[10px]">★</span>
-                      )}
-                    </div>
-                    <div>
-                      <div className="font-bold text-gray-900 text-lg leading-tight">{member.name}</div>
-                      <div className="text-xs text-gray-400">{member.membershipId}{plan ? ` • ${plan.name}` : ""}</div>
-                    </div>
-                  </div>
-                  <StatusBadge status={status} />
+      <div className="flex flex-col gap-3">
+        {loading ? (
+          [0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 p-3">
+              <div className="flex items-center gap-3">
+                <div className="skeleton w-10 h-10 rounded-lg shrink-0" />
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="skeleton h-3.5 w-32" />
+                  <div className="skeleton h-3 w-44" />
                 </div>
-
-                {tier !== "standard" && (
-                  <div className="mb-3">
-                    <TierBadge tier={tier} />
-                    {tier === "platinum" && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Consistent attendance for {member.streak} days. Eligible for &quot;Platinum Performer&quot; quarterly reward.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {tier !== "standard" && (
-                  <div className="flex gap-6 mb-3">
-                    <div>
-                      <div className="text-xs text-gray-400">ATTENDANCE</div>
-                      <div className="text-xl font-bold text-gray-900">{member.attendance}%</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400">STREAK</div>
-                      <div className="text-xl font-bold text-gray-900">{member.streak} Days</div>
-                    </div>
-                  </div>
-                )}
-
-                {status === "expiring" && latestMembership && (
-                  <div className="mb-3">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>{daysLeft} DAYS LEFT</span>
-                      <span>{progressPct}% consumed</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${progressPct}%` }} />
-                    </div>
-                  </div>
-                )}
-
-                {status === "active" && (
-                  <div className="flex items-center gap-2 mb-3">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-                      <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                    </svg>
-                    <span className="text-xs text-gray-500">
-                      LAST VISIT: <span className="font-medium text-gray-700">{formatLastVisit(member.lastVisit)}</span>
-                    </span>
-                  </div>
-                )}
-
-                {status === "expiring" && latestMembership && plan && (
-                  <WaButton
-                    href={renewalWaUrl(member.phone, member.name, plan.name, latestMembership.endDate)}
-                    label="Send Renewal Reminder"
-                    variant="blue"
-                  />
-                )}
-
-                {status === "expired" && plan && (
-                  <div className="flex gap-2">
-                    <a
-                      href={`tel:${member.phone}`}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.7A16 16 0 0 0 16 16.61l.77-.77a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                      </svg>
-                      Call
-                    </a>
-                    <WaButton
-                      href={reactivationWaUrl(member.phone, member.name, plan.name)}
-                      label="Send Reactivation"
-                      variant="red"
-                    />
-                  </div>
-                )}
-
-                {status === "none" && (
-                  <WaButton
-                    href={inviteWaUrl(member.phone, member.name)}
-                    label="Send Invite to Join"
-                    variant="green"
-                  />
-                )}
+                <div className="skeleton h-5 w-16 rounded-full" />
+              </div>
+              <div className="mt-2.5 pt-2.5 border-t border-gray-50 flex items-center gap-2">
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <div className="skeleton h-3 w-48" />
+                  <div className="skeleton h-2.5 w-36" />
+                </div>
+                <div className="skeleton h-7 w-16 rounded-lg" />
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {data.length > 0 && (
-        <div className="mt-6 bg-gray-900 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <div className="text-gray-400 text-xs font-medium">Total Active Members</div>
-            <div className="text-white text-3xl font-black">{activeCount}</div>
-            <div className="text-gray-500 text-xs mt-0.5">+12% this month</div>
+          ))
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">
+            {data.length === 0 ? "No members yet" : "No members match your search"}
           </div>
-          <div className="flex -space-x-2">
-            {data.filter((d) => d.status === "active" || d.status === "expiring").slice(0, 4).map(({ member }) => (
-              <Avatar key={member.id} name={member.name} src={member.photo} className="w-8 h-8 rounded-full border-2 border-gray-900" textClassName="text-[10px]" />
-            ))}
-            {activeCount > 4 && (
-              <div className="w-8 h-8 rounded-full border-2 border-gray-900 bg-gray-700 flex items-center justify-center text-white text-[10px] font-bold">
-                +{activeCount - 4}
+        ) : null}
+        {!loading && filtered.map(({ member, status, latestMembership, plan, daysLeft }) => (
+          <div key={member.id} className="bg-white rounded-xl border border-gray-100 p-3">
+            {assigningId === member.id ? (
+              <div className="flex items-center gap-3 -m-0.5 p-0.5">
+                <Avatar name={member.name} src={member.photo} className="w-10 h-10 rounded-lg shrink-0" textClassName="text-xs" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-gray-900 leading-tight truncate">{member.name}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">{member.membershipId} · {member.phone}</div>
+                </div>
+                <StatusBadge status={status} />
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            ) : (
+              <>
+                <Link href={`/members/${member.id}`} className="flex items-center gap-3 -m-0.5 p-0.5 rounded-lg hover:bg-gray-50 transition">
+                  <Avatar name={member.name} src={member.photo} className="w-10 h-10 rounded-lg shrink-0" textClassName="text-xs" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm text-gray-900 leading-tight truncate">{member.name}</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5 truncate">{member.membershipId} · {member.phone}</div>
+                  </div>
+                  <StatusBadge status={status} />
+                </Link>
 
+                <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-gray-50">
+                  <div className="text-xs min-w-0 flex-1">
+                    {plan && latestMembership ? (
+                      <>
+                        <span className="truncate block">
+                          <span className="font-medium text-gray-800">{plan.name}</span>
+                          <span className="text-gray-400"> · ₹{plan.price} · </span>
+                          <span className={daysLeft < 0 ? "text-red-500 font-medium" : daysLeft <= 7 ? "text-amber-600 font-medium" : "text-gray-500"}>
+                            {daysLeft < 0 ? `${Math.abs(daysLeft)}d ago` : `${daysLeft}d left`}
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-gray-400 truncate block mt-0.5">
+                          Joined {fmtDate(latestMembership.startDate)} · Ends {fmtDate(latestMembership.endDate)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-400">No active membership</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => startAssign(member.id)}
+                      className="text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg transition"
+                    >
+                      {plan ? "Renew" : "Assign"}
+                    </button>
+                    {plan && latestMembership && daysLeft >= 0 && daysLeft < 30 && (
+                      <a href={renewalWaUrl(member.phone, member.name, plan.name, latestMembership.endDate)} target="_blank" rel="noopener noreferrer"
+                         aria-label="Send renewal WhatsApp"
+                         className="inline-flex items-center justify-center bg-green-500 hover:bg-green-600 text-white w-8 h-8 rounded-lg transition">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.1-1.2-.4-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6.1-.1.3-.3.4-.5.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4s-1 1-1 2.5 1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.2-.3-.3-.6-.4zM12 2C6.5 2 2 6.5 2 12c0 1.8.5 3.5 1.3 5L2 22l5.2-1.4c1.4.8 3.1 1.2 4.8 1.2 5.5 0 10-4.5 10-10S17.5 2 12 2zm0 18c-1.5 0-3-.4-4.3-1.2l-.3-.2-3.1.8.8-3-.2-.3C4.1 14.7 3.7 13.4 3.7 12c0-4.6 3.7-8.3 8.3-8.3s8.3 3.7 8.3 8.3-3.7 8-8.3 8z"/></svg>
+                      </a>
+                    )}
+                    {plan && status === "expired" && (
+                      <a href={reactivationWaUrl(member.phone, member.name, plan.name)} target="_blank" rel="noopener noreferrer"
+                         aria-label="Send reactivation WhatsApp"
+                         className="inline-flex items-center justify-center bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-lg transition">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.1-1.2-.4-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6.1-.1.3-.3.4-.5.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4s-1 1-1 2.5 1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.2-.3-.3-.6-.4zM12 2C6.5 2 2 6.5 2 12c0 1.8.5 3.5 1.3 5L2 22l5.2-1.4c1.4.8 3.1 1.2 4.8 1.2 5.5 0 10-4.5 10-10S17.5 2 12 2zm0 18c-1.5 0-3-.4-4.3-1.2l-.3-.2-3.1.8.8-3-.2-.3C4.1 14.7 3.7 13.4 3.7 12c0-4.6 3.7-8.3 8.3-8.3s8.3 3.7 8.3 8.3-3.7 8-8.3 8z"/></svg>
+                      </a>
+                    )}
+                    {!plan && (
+                      <a href={inviteWaUrl(member.phone, member.name)} target="_blank" rel="noopener noreferrer"
+                         aria-label="Send invite WhatsApp"
+                         className="inline-flex items-center justify-center bg-green-500 hover:bg-green-600 text-white w-8 h-8 rounded-lg transition">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.1-1.2-.4-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6.1-.1.3-.3.4-.5.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4s-1 1-1 2.5 1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.2-.3-.3-.6-.4zM12 2C6.5 2 2 6.5 2 12c0 1.8.5 3.5 1.3 5L2 22l5.2-1.4c1.4.8 3.1 1.2 4.8 1.2 5.5 0 10-4.5 10-10S17.5 2 12 2zm0 18c-1.5 0-3-.4-4.3-1.2l-.3-.2-3.1.8.8-3-.2-.3C4.1 14.7 3.7 13.4 3.7 12c0-4.6 3.7-8.3 8.3-8.3s8.3 3.7 8.3 8.3-3.7 8-8.3 8z"/></svg>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {assigningId === member.id ? (
+              <form onSubmit={(e) => submitAssign(e, member.id)} className="flex flex-col gap-2 pt-3 border-t border-gray-100">
+                <select
+                  required
+                  value={assignForm.planId}
+                  onChange={(e) => setAssignForm({ ...assignForm, planId: e.target.value })}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+                >
+                  <option value="">Select a plan…</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} — {p.durationMonths}mo — ₹{p.price}</option>
+                  ))}
+                </select>
+                <input
+                  required
+                  type="date"
+                  value={assignForm.startDate}
+                  onChange={(e) => setAssignForm({ ...assignForm, startDate: e.target.value })}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                />
+                {assignError && <p className="text-red-500 text-xs">{assignError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={cancelAssign} className="flex-1 border border-gray-200 text-gray-600 rounded-xl py-2 font-semibold text-sm hover:bg-gray-50">
+                    Cancel
+                  </button>
+                  <button type="submit" className="flex-[2] bg-gray-900 text-white rounded-xl py-2 font-semibold text-sm hover:bg-gray-800">
+                    Assign
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -18,5 +18,7 @@ const AutomationLogSchema = new Schema(
   { toJSON: { transform }, toObject: { transform } }
 );
 
+AutomationLogSchema.index({ timestamp: -1 });
+
 export const AutomationLog =
   models.AutomationLog || model("AutomationLog", AutomationLogSchema);

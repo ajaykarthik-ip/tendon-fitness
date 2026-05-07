@@ -19,4 +19,7 @@ const AlertSchema = new Schema(
   { toJSON: { transform }, toObject: { transform } }
 );
 
+AlertSchema.index({ read: 1, createdAt: -1 });
+AlertSchema.index({ memberId: 1 });
+
 export const Alert = models.Alert || model("Alert", AlertSchema);
