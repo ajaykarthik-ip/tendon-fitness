@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 
 const inter = Inter({
@@ -54,9 +55,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <line x1="20" y1="20" x2="16.65" y2="16.65" />
                 </svg>
               </button>
-              <div className="w-8 h-8 rounded-full bg-[var(--color-ink)] flex items-center justify-center text-white text-[11px] font-semibold tracking-tight ml-1">
+              <Link
+                href="/admin"
+                aria-label="Admin profile"
+                className="w-8 h-8 rounded-full bg-[var(--color-ink)] flex items-center justify-center text-white text-[11px] font-semibold tracking-tight ml-1 tap"
+              >
                 AD
-              </div>
+              </Link>
             </div>
           </div>
         </header>

@@ -66,10 +66,13 @@ export default function BottomNav() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    if (pathname === "/login") return;
     store.getAlerts()
       .then((alerts) => setUnreadCount(alerts.filter((a) => !a.read).length))
       .catch(() => setUnreadCount(0));
   }, [pathname]);
+
+  if (pathname === "/login") return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--color-surface)]/90 backdrop-blur-md border-t border-[var(--color-line)]">
