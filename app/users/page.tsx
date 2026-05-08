@@ -143,7 +143,7 @@ export default function UsersPage() {
     e.preventDefault();
     setError("");
     const members = await store.getMembers();
-    if (members.find((m) => m.email === form.email)) { setError("Email already exists."); return; }
+    if (form.email && members.find((m) => m.email === form.email)) { setError("Email already exists."); return; }
     try {
       await store.createMember({
         name: form.name,
@@ -303,8 +303,8 @@ export default function UsersPage() {
               <input required placeholder="e.g. Priya Kumar" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Email</label>
-              <input required type="email" placeholder="priya@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Email <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input type="email" placeholder="priya@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1.5 block font-medium">Phone</label>

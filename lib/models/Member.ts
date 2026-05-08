@@ -10,7 +10,7 @@ const transform = (_doc: unknown, ret: Record<string, unknown>) => {
 const MemberSchema = new Schema(
   {
     name: { type: String, required: true },
-    email: { type: String, required: true },
+    email: { type: String, default: "" },
     phone: { type: String, required: true },
     photo: { type: String, default: "" },
     membershipId: { type: String, required: true, unique: true },

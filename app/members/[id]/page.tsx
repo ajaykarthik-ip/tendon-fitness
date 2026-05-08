@@ -117,7 +117,7 @@ export default function MemberProfilePage() {
 
   const startEdit = () => {
     if (!member) return;
-    setForm({ name: member.name, email: member.email, phone: member.phone, photo: member.photo ?? "" });
+    setForm({ name: member.name, email: member.email ?? "", phone: member.phone, photo: member.photo ?? "" });
     setEditing(true);
     setError("");
   };
@@ -221,7 +221,7 @@ export default function MemberProfilePage() {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-500">Email</span>
-              <span className="font-medium text-gray-900 truncate ml-2">{member.email}</span>
+              <span className="font-medium text-gray-900 truncate ml-2">{member.email || "—"}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-500">Joined</span>
@@ -291,8 +291,8 @@ export default function MemberProfilePage() {
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Email</label>
-              <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Email <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
             </div>
             <div>
