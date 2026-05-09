@@ -25,6 +25,8 @@ export interface Membership {
   planId: string;
   startDate: string;
   endDate: string;
+  pendingAmount?: number;
+  bonusMonths?: number;
 }
 
 export interface AutomationLog {

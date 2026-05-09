@@ -28,17 +28,28 @@ export default function MemberProfilePage() {
   const galleryRef = useRef<HTMLInputElement>(null);
 
   const [assigning, setAssigning] = useState(false);
-  const [assignForm, setAssignForm] = useState({ planId: "", startDate: new Date().toISOString().split("T")[0] });
+  const [assignForm, setAssignForm] = useState({ planId: "", startDate: new Date().toISOString().split("T")[0], pendingAmount: "", bonusMonths: "" });
   const [assignError, setAssignError] = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
 
   const [editingMs, setEditingMs] = useState<string | null>(null);
-  const [msForm, setMsForm] = useState({ planId: "", startDate: "" });
+  const [msForm, setMsForm] = useState({ planId: "", startDate: "", pendingAmount: "", bonusMonths: "" });
   const [msError, setMsError] = useState("");
   const [msSaving, setMsSaving] = useState(false);
 
   const startEditMs = (ms: Membership) => {
-    setMsForm({ planId: ms.planId, startDate: ms.startDate });
+    let bonus = ms.bonusMonths ?? 0;
+    if (!bonus) {
+      const p = plans.find((pl) => pl.id === ms.planId);
+      if (p) {
+        const expected = new Date(ms.startDate);
+        expected.setMonth(expected.getMonth() + p.durationMonths);
+        const actual = new Date(ms.endDate);
+        const diff = Math.round((actual.getTime() - expected.getTime()) / (1000 * 60 * 60 * 24 * 30));
+        if (diff > 0) bonus = diff;
+      }
+    }
+    setMsForm({ planId: ms.planId, startDate: ms.startDate, pendingAmount: String(ms.pendingAmount ?? 0), bonusMonths: String(bonus) });
     setMsError("");
     setEditingMs(ms.id);
   };
@@ -49,14 +60,20 @@ export default function MemberProfilePage() {
     const plan = plans.find((p) => p.id === msForm.planId);
     if (!plan) { setMsError("Pick a plan"); return; }
     if (!msForm.startDate) { setMsError("Pick a start date"); return; }
+    const bonus = Number(msForm.bonusMonths) || 0;
+    if (bonus < 0) { setMsError("Bonus months can't be negative"); return; }
     const end = new Date(msForm.startDate);
-    end.setMonth(end.getMonth() + plan.durationMonths);
+    end.setMonth(end.getMonth() + plan.durationMonths + bonus);
     setMsSaving(true);
     try {
+      const pending = Number(msForm.pendingAmount) || 0;
+      if (pending < 0) { setMsError("Pending amount can't be negative"); setMsSaving(false); return; }
       await store.updateMembership(msId, {
         planId: plan.id,
         startDate: msForm.startDate,
         endDate: end.toISOString().split("T")[0],
+        pendingAmount: pending,
+        bonusMonths: bonus,
       });
       setEditingMs(null);
       await load();
@@ -68,7 +85,7 @@ export default function MemberProfilePage() {
   };
 
   const startAssign = () => {
-    setAssignForm({ planId: "", startDate: new Date().toISOString().split("T")[0] });
+    setAssignForm({ planId: "", startDate: new Date().toISOString().split("T")[0], pendingAmount: "", bonusMonths: "" });
     setAssignError("");
     setAssigning(true);
   };
@@ -80,15 +97,21 @@ export default function MemberProfilePage() {
     const plan = plans.find((p) => p.id === assignForm.planId);
     if (!plan) { setAssignError("Pick a plan"); return; }
     if (!assignForm.startDate) { setAssignError("Pick a start date"); return; }
+    const bonus = Number(assignForm.bonusMonths) || 0;
+    if (bonus < 0) { setAssignError("Bonus months can't be negative"); return; }
     const end = new Date(assignForm.startDate);
-    end.setMonth(end.getMonth() + plan.durationMonths);
+    end.setMonth(end.getMonth() + plan.durationMonths + bonus);
     setAssignSaving(true);
     try {
+      const pending = Number(assignForm.pendingAmount) || 0;
+      if (pending < 0) { setAssignError("Pending amount can't be negative"); setAssignSaving(false); return; }
       await store.createMembership({
         memberId: member.id,
         planId: plan.id,
         startDate: assignForm.startDate,
         endDate: end.toISOString().split("T")[0],
+        pendingAmount: pending,
+        bonusMonths: bonus,
       });
       setAssigning(false);
       await load();
@@ -328,8 +351,9 @@ export default function MemberProfilePage() {
           editingMs === latest.id ? (
             (() => {
               const editPlan = plans.find((p) => p.id === msForm.planId);
+              const previewBonus = Number(msForm.bonusMonths) || 0;
               const previewEnd = editPlan && msForm.startDate
-                ? (() => { const d = new Date(msForm.startDate); d.setMonth(d.getMonth() + editPlan.durationMonths); return fmtDate(d.toISOString().split("T")[0]); })()
+                ? (() => { const d = new Date(msForm.startDate); d.setMonth(d.getMonth() + editPlan.durationMonths + previewBonus); return fmtDate(d.toISOString().split("T")[0]); })()
                 : null;
               return (
                 <form onSubmit={(e) => submitEditMs(e, latest.id)} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 flex flex-col gap-3">
@@ -355,6 +379,35 @@ export default function MemberProfilePage() {
                     <label className="text-xs text-gray-500 mb-1.5 block font-medium">Start Date</label>
                     <input required type="date" value={msForm.startDate} onChange={(e) => setMsForm({ ...msForm, startDate: e.target.value })}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">Pending Amount (₹)</label>
+                    <input type="number" min="0" placeholder="0" value={msForm.pendingAmount} onChange={(e) => setMsForm({ ...msForm, pendingAmount: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
+                    <p className="text-[11px] text-gray-400 mt-1">Set to 0 once fully paid.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">Bonus Months</label>
+                    <div className="flex items-center justify-between gap-3 border border-gray-200 rounded-xl px-4 py-3">
+                      <div className="text-sm">
+                        <span className="font-semibold text-gray-900">{Number(msForm.bonusMonths) || 0} month{(Number(msForm.bonusMonths) || 0) === 1 ? "" : "s"}</span>
+                        <span className="text-gray-400 text-xs"> active</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button"
+                          onClick={() => setMsForm({ ...msForm, bonusMonths: String(Math.max(0, (Number(msForm.bonusMonths) || 0) - 1)) })}
+                          className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold disabled:opacity-40"
+                          disabled={(Number(msForm.bonusMonths) || 0) === 0}
+                          aria-label="Remove one bonus month">−</button>
+                        <button type="button"
+                          onClick={() => setMsForm({ ...msForm, bonusMonths: String((Number(msForm.bonusMonths) || 0) + 1) })}
+                          className="w-8 h-8 rounded-lg bg-gray-900 hover:bg-gray-800 text-white font-bold"
+                          aria-label="Add one bonus month">+</button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">End date updates automatically.</p>
                   </div>
 
                   {previewEnd && (
@@ -386,10 +439,36 @@ export default function MemberProfilePage() {
               </span>
             </div>
             <div className="text-xs text-gray-500 flex flex-col gap-1 mb-3">
-              <div>₹{latestPlan.price} · {latestPlan.durationMonths}mo</div>
+              <div>
+                ₹{latestPlan.price} · {latestPlan.durationMonths}mo
+                {(latest.pendingAmount ?? 0) > 0 && (
+                  <span className="text-red-500 font-medium"> · ₹{latest.pendingAmount} pending</span>
+                )}
+              </div>
               <div>{fmtDate(latest.startDate)} → {fmtDate(latest.endDate)}</div>
             </div>
             <div className="flex gap-2">
+              {(latest.pendingAmount ?? 0) > 0 && (
+                <button
+                  onClick={async () => {
+                    const pending = latest.pendingAmount ?? 0;
+                    const input = prompt(`How much did they pay? (Pending: ₹${pending})`, String(pending));
+                    if (input === null) return;
+                    const paid = Number(input);
+                    if (!Number.isFinite(paid) || paid <= 0) { alert("Enter a valid amount"); return; }
+                    if (paid > pending) { alert(`Amount can't be more than pending (₹${pending})`); return; }
+                    try {
+                      await store.updateMembership(latest.id, { pendingAmount: pending - paid });
+                      await load();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Failed to update");
+                    }
+                  }}
+                  className="flex-1 text-xs font-semibold bg-green-50 hover:bg-green-100 text-green-700 py-2 rounded-lg transition"
+                >
+                  Update Payment
+                </button>
+              )}
               <button onClick={() => startEditMs(latest)} className="flex-1 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 py-2 rounded-lg transition">
                 Edit
               </button>
@@ -428,6 +507,28 @@ export default function MemberProfilePage() {
                 type="date"
                 value={assignForm.startDate}
                 onChange={(e) => setAssignForm({ ...assignForm, startDate: e.target.value })}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Pending Amount (₹) <span className="text-gray-400 font-normal">— optional</span></label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={assignForm.pendingAmount}
+                onChange={(e) => setAssignForm({ ...assignForm, pendingAmount: e.target.value })}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block font-medium">Bonus Months <span className="text-gray-400 font-normal">— optional</span></label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={assignForm.bonusMonths}
+                onChange={(e) => setAssignForm({ ...assignForm, bonusMonths: e.target.value })}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
               />
             </div>

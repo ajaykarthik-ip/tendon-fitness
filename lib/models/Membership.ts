@@ -15,6 +15,8 @@ const MembershipSchema = new Schema(
     planId: { type: Schema.Types.ObjectId, ref: "Plan", required: true },
     startDate: { type: String, required: true },
     endDate: { type: String, required: true },
+    pendingAmount: { type: Number, default: 0 },
+    bonusMonths: { type: Number, default: 0 },
   },
   { timestamps: true, toJSON: { transform }, toObject: { transform } }
 );

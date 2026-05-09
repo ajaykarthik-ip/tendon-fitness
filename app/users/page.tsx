@@ -29,6 +29,15 @@ function buildEnriched(members: Member[], memberships: Membership[], plans: Plan
   });
 }
 
+function effectiveBonus(ms: Membership, plan: Plan): number {
+  if ((ms.bonusMonths ?? 0) > 0) return ms.bonusMonths!;
+  const expected = new Date(ms.startDate);
+  expected.setMonth(expected.getMonth() + plan.durationMonths);
+  const actual = new Date(ms.endDate);
+  const diff = Math.round((actual.getTime() - expected.getTime()) / (1000 * 60 * 60 * 24 * 30));
+  return diff > 0 ? diff : 0;
+}
+
 function StatusBadge({ status }: { status: "active" | "expiring" | "expired" | "none" }) {
   if (status === "active")   return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">ACTIVE</span>;
   if (status === "expiring") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">EXPIRING</span>;
@@ -64,7 +73,7 @@ export default function UsersPage() {
 
   // assign-plan inline form per-member
   const [assigningId, setAssigningId] = useState<string | null>(null);
-  const [assignForm, setAssignForm] = useState({ planId: "", startDate: new Date().toISOString().split("T")[0] });
+  const [assignForm, setAssignForm] = useState({ planId: "", startDate: new Date().toISOString().split("T")[0], pendingAmount: "", bonusMonths: "" });
   const [assignError, setAssignError] = useState("");
 
   async function load() {
@@ -166,7 +175,7 @@ export default function UsersPage() {
 
   const startAssign = (memberId: string) => {
     setAssigningId(memberId);
-    setAssignForm({ planId: "", startDate: new Date().toISOString().split("T")[0] });
+    setAssignForm({ planId: "", startDate: new Date().toISOString().split("T")[0], pendingAmount: "", bonusMonths: "" });
     setAssignError("");
   };
 
@@ -181,14 +190,20 @@ export default function UsersPage() {
     const plan = plans.find((p) => p.id === assignForm.planId);
     if (!plan) { setAssignError("Pick a plan"); return; }
     if (!assignForm.startDate) { setAssignError("Pick a start date"); return; }
+    const bonus = Number(assignForm.bonusMonths) || 0;
+    if (bonus < 0) { setAssignError("Bonus months can't be negative"); return; }
     const end = new Date(assignForm.startDate);
-    end.setMonth(end.getMonth() + plan.durationMonths);
+    end.setMonth(end.getMonth() + plan.durationMonths + bonus);
     try {
+      const pending = Number(assignForm.pendingAmount) || 0;
+      if (pending < 0) { setAssignError("Pending amount can't be negative"); return; }
       await store.createMembership({
         memberId,
         planId: plan.id,
         startDate: assignForm.startDate,
         endDate: end.toISOString().split("T")[0],
+        pendingAmount: pending,
+        bonusMonths: bonus,
       });
       setAssigningId(null);
       await load();
@@ -377,8 +392,28 @@ export default function UsersPage() {
                             {daysLeft < 0 ? `${Math.abs(daysLeft)}d ago` : `${daysLeft}d left`}
                           </span>
                         </span>
+                        {(() => {
+                          const bonus = effectiveBonus(latestMembership, plan);
+                          const totalDays = Math.round((new Date(latestMembership.endDate).getTime() - new Date(latestMembership.startDate).getTime()) / (1000 * 60 * 60 * 24));
+                          const bonusDays = bonus > 0
+                            ? (() => {
+                                const planEnd = new Date(latestMembership.startDate);
+                                planEnd.setMonth(planEnd.getMonth() + plan.durationMonths);
+                                return Math.round((new Date(latestMembership.endDate).getTime() - planEnd.getTime()) / (1000 * 60 * 60 * 24));
+                              })()
+                            : 0;
+                          const planDays = totalDays - bonusDays;
+                          return bonus > 0 ? (
+                            <span className="text-[11px] text-emerald-700 truncate block mt-0.5">
+                              {planDays}d plan + {bonusDays}d bonus = {totalDays}d total
+                            </span>
+                          ) : null;
+                        })()}
                         <span className="text-[11px] text-gray-400 truncate block mt-0.5">
                           Joined {fmtDate(latestMembership.startDate)} · Ends {fmtDate(latestMembership.endDate)}
+                          {(latestMembership.pendingAmount ?? 0) > 0 && (
+                            <span className="text-red-500 font-medium"> · ₹{latestMembership.pendingAmount} pending</span>
+                          )}
                         </span>
                       </>
                     ) : (
@@ -436,6 +471,22 @@ export default function UsersPage() {
                   type="date"
                   value={assignForm.startDate}
                   onChange={(e) => setAssignForm({ ...assignForm, startDate: e.target.value })}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Pending amount (₹) — leave 0 if fully paid"
+                  value={assignForm.pendingAmount}
+                  onChange={(e) => setAssignForm({ ...assignForm, pendingAmount: e.target.value })}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Bonus months (optional) — e.g. 1"
+                  value={assignForm.bonusMonths}
+                  onChange={(e) => setAssignForm({ ...assignForm, bonusMonths: e.target.value })}
                   className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
                 />
                 {assignError && <p className="text-red-500 text-xs">{assignError}</p>}

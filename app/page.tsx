@@ -11,11 +11,20 @@ interface ExpiringItem {
   daysLeft: number;
 }
 
+interface PendingItem {
+  member: Member;
+  plan: Plan | null;
+  membership: Membership;
+  pending: number;
+}
+
 interface Stats {
   members: number;
   active: number;
   expiring: number;
   expired: number;
+  revenue: number;
+  pending: number;
 }
 
 const DAY_MS = 1000 * 60 * 60 * 24;
@@ -24,11 +33,36 @@ const daysLeft = (endDate: string) =>
 
 function computeStats(members: Member[], plans: Plan[], memberships: Membership[]) {
   let active = 0, expiring = 0, expired = 0;
+  let revenue = 0, pending = 0;
   const soonList: ExpiringItem[] = [];
+  const pendingList: PendingItem[] = [];
   const memberMap = new Map(members.map((m) => [m.id, m]));
   const planMap = new Map(plans.map((p) => [p.id, p]));
 
+  // Latest membership per member, for pending list
+  const latestByMember = new Map<string, Membership>();
   for (const m of memberships) {
+    const cur = latestByMember.get(m.memberId);
+    if (!cur || new Date(m.endDate).getTime() > new Date(cur.endDate).getTime()) {
+      latestByMember.set(m.memberId, m);
+    }
+  }
+  for (const m of latestByMember.values()) {
+    if ((m.pendingAmount ?? 0) > 0) {
+      const member = memberMap.get(m.memberId);
+      const plan = planMap.get(m.planId) ?? null;
+      if (member) pendingList.push({ member, plan, membership: m, pending: m.pendingAmount! });
+    }
+  }
+  pendingList.sort((a, b) => b.pending - a.pending);
+
+  for (const m of memberships) {
+    const planForMs = planMap.get(m.planId);
+    const price = planForMs?.price ?? 0;
+    const pend = m.pendingAmount ?? 0;
+    revenue += Math.max(0, price - pend);
+    pending += pend;
+
     const d = daysLeft(m.endDate);
     if (d < 0) {
       expired++;
@@ -45,17 +79,19 @@ function computeStats(members: Member[], plans: Plan[], memberships: Membership[
 
   soonList.sort((a, b) => a.daysLeft - b.daysLeft);
   return {
-    stats: { members: members.length, active, expiring, expired } as Stats,
+    stats: { members: members.length, active, expiring, expired, revenue, pending } as Stats,
     expiringSoon: soonList,
+    pendingPayments: pendingList,
   };
 }
 
-const EMPTY_STATS: Stats = { members: 0, active: 0, expiring: 0, expired: 0 };
+const EMPTY_STATS: Stats = { members: 0, active: 0, expiring: 0, expired: 0, revenue: 0, pending: 0 };
 
-function StatCard({ label, value, tone, loading }: { label: string; value: number; tone: "ink" | "warn" | "danger"; loading: boolean }) {
+function StatCard({ label, value, tone, loading, prefix }: { label: string; value: number; tone: "ink" | "warn" | "danger" | "success"; loading: boolean; prefix?: string }) {
   const toneClass =
     tone === "warn" ? "text-[var(--color-warn)]" :
     tone === "danger" ? "text-[var(--color-danger)]" :
+    tone === "success" ? "text-[var(--color-success)]" :
     "text-[var(--color-ink)]";
   return (
     <div className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] p-4">
@@ -66,7 +102,7 @@ function StatCard({ label, value, tone, loading }: { label: string; value: numbe
         <div className="skeleton h-7 w-12 mt-2" />
       ) : (
         <div className={`text-3xl font-semibold tracking-tight mt-1 tabular-nums ${toneClass}`}>
-          {value}
+          {prefix}{value.toLocaleString("en-IN")}
         </div>
       )}
     </div>
@@ -92,14 +128,16 @@ function ChevronIcon() {
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [expiringSoon, setExpiringSoon] = useState<ExpiringItem[]>([]);
+  const [pendingPayments, setPendingPayments] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([store.getMembers(), store.getPlans(), store.getMemberships()])
       .then(([members, plans, memberships]) => {
-        const { stats: s, expiringSoon: e } = computeStats(members, plans, memberships);
+        const { stats: s, expiringSoon: e, pendingPayments: p } = computeStats(members, plans, memberships);
         setStats(s);
         setExpiringSoon(e);
+        setPendingPayments(p);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -120,6 +158,10 @@ export default function Dashboard() {
         <StatCard label="Members" value={stats.members} tone="ink" loading={loading} />
         <StatCard label="Expiring" value={stats.expiring} tone="warn" loading={loading} />
         <StatCard label="Expired" value={stats.expired} tone="danger" loading={loading} />
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 mt-2.5">
+        <StatCard label="Revenue" value={stats.revenue} tone="success" loading={loading} prefix="₹" />
+        <StatCard label="Pending" value={stats.pending} tone="danger" loading={loading} prefix="₹" />
       </div>
 
       <div className="flex items-center justify-between mt-8 mb-3">
@@ -189,6 +231,62 @@ export default function Dashboard() {
                   <ChevronIcon />
                 </Link>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-8 mb-3">
+        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-ink)]">
+          Pending payments
+        </h2>
+        <Link
+          href="/users"
+          className="text-[13px] font-medium text-[var(--color-ink-3)] hover:text-[var(--color-ink)] tap"
+        >
+          View all
+        </Link>
+      </div>
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-line)] p-4 flex items-center gap-3">
+              <div className="skeleton w-11 h-11 rounded-full" />
+              <div className="flex-1 flex flex-col gap-2">
+                <div className="skeleton h-3.5 w-32" />
+                <div className="skeleton h-3 w-20" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : pendingPayments.length === 0 ? (
+        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-line)] py-10 text-center">
+          <div className="text-[var(--color-ink-3)] text-sm">No pending payments.</div>
+          <div className="text-[var(--color-ink-4)] text-xs mt-1">All members are paid up.</div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {pendingPayments.map(({ member, plan, membership, pending }) => (
+            <div key={membership.id} className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-line)] p-3.5 flex items-center gap-3">
+              <Avatar name={member.name} src={member.photo} className="w-11 h-11 rounded-full" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[14px] tracking-tight text-[var(--color-ink)] truncate">
+                  {member.name}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="inline-flex items-center text-[10px] font-semibold tracking-tight px-1.5 py-0.5 rounded-md bg-[var(--color-danger-soft)] text-[var(--color-danger)]">
+                    ₹{pending}
+                  </span>
+                  <span className="text-[12px] text-[var(--color-ink-3)] truncate">{plan?.name ?? "—"}</span>
+                </div>
+              </div>
+              <Link
+                href={`/members/${member.id}`}
+                className="w-9 h-9 rounded-full hover:bg-[var(--color-line-2)] flex items-center justify-center text-[var(--color-ink-3)] tap"
+                aria-label="Open"
+              >
+                <ChevronIcon />
+              </Link>
             </div>
           ))}
         </div>
